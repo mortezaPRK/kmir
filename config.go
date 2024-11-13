@@ -52,7 +52,6 @@ var (
 
 	clientID     = flag.String("client-id", "", "Client ID")
 	kafkaVersion = flag.String("kafka-version", "", "Kafka version")
-	topics       = flag.String("topics", "", "Comma-separated list of topics")
 )
 
 func parseFlags() (*Config, error) {
@@ -97,12 +96,13 @@ func parseFlags() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse sink options: %w", err)
 	}
 
-	if topics == nil || *topics == "" {
+	topics := flag.Args()
+	if len(topics) == 0 {
 		return nil, fmt.Errorf("topics is empty")
 	}
 
 	specifiedTopics := make(map[string]TopicConfig)
-	for _, topic := range strings.Split(*topics, ",") {
+	for _, topic := range topics {
 		topicOffset := strings.Split(topic, ":")
 		if len(topicOffset) != 2 {
 			return nil, fmt.Errorf("invalid topic %q", topic)
