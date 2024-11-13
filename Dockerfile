@@ -10,7 +10,7 @@ COPY . .
 
 RUN go build -o /app/main .
 
-FROM gcr.io/distroless/static-debian11 AS runner
+FROM gcr.io/distroless/static-debian12 AS runner
 
 COPY --from=builder /app/main /app/main
 
