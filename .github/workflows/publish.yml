@@ -30,3 +30,4 @@ jobs:
           context: .
           push: true
           tags: mortezaprk/kmir:latest,mortezaprk/kmir:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64

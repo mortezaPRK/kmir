@@ -1,4 +1,7 @@
-FROM golang:1.23.3-alpine AS builder
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.23.3-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -8,9 +11,9 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o /app/main .
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /app/main .
 
-FROM gcr.io/distroless/static-debian12 AS runner
+FROM --platform=$BUILDPLATFORM gcr.io/distroless/static-debian12 AS runner
 
 COPY --from=builder /app/main /app/main
 
