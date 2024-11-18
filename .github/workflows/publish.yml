@@ -33,7 +33,6 @@ jobs:
         with:
           context: .
           push: true
-          load: true
           tags: mortezaprk/kmir:latest,mortezaprk/kmir:${{ github.event.release.tag_name }},mortezaprk/kmir:latest
           platforms: ${{ env.SUPPORTED_PLATFORMS }}
           cache-from: type=gha
