@@ -3,123 +3,245 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-var ctx = context.Background()
-
 func main() {
-	// Parse flags
-	cfg, err := parseFlags()
-	if err != nil {
-		panic(fmt.Errorf("failed to parse flags: %w", err))
+	if err := initializeConfig(); err != nil {
+		slog.Error("Failed to initialize config", slog.Any("error", err))
+		return
 	}
 
-	// Create source and sink clients
-	sourceClient, err := kgo.NewClient(cfg.Source...)
+	var rootCtx = context.Background()
+
+	slog.Info("Creating source Kafka client")
+	sourceClient, sourceAdminClient, err := getClients(config.Source)
 	if err != nil {
-		panic(fmt.Errorf("failed to create source admin client: %w", err))
+		slog.Error("Failed to create source Kafka client", slog.Any("error", err))
+		return
 	}
 	defer sourceClient.Close()
 
-	sinkClient, err := kgo.NewClient(cfg.Sink...)
+	slog.Info("Creating sink Kafka client")
+	sinkClient, sinkAdminClient, err := getClients(config.Sink)
 	if err != nil {
-		panic(fmt.Errorf("failed to create sink admin client: %w", err))
+		slog.Error("Failed to create sink Kafka client", slog.Any("error", err))
+		return
 	}
 	defer sinkClient.Close()
 
-	// Create admin clients
-	sourceAdminClient := kadm.NewClient(sourceClient)
-	sinkAdminClient := kadm.NewClient(sinkClient)
-
-	// List topics in source and sink
-	topicNames := make([]string, 0, len(cfg.Topics))
-	for topic := range cfg.Topics {
-		topicNames = append(topicNames, topic)
-	}
-
-	sourceTopics, err := sourceAdminClient.ListTopics(ctx, topicNames...)
+	slog.Info("Getting source topics")
+	sourceTopics, err := getTopics(rootCtx, sourceAdminClient)
 	if err != nil {
-		panic(fmt.Errorf("failed to list source topics: %w", err))
+		slog.Error("Failed to get source topics", slog.Any("error", err))
+		return
 	}
 
-	sinkTopics, err := sinkAdminClient.ListTopics(ctx, topicNames...)
+	slog.Info("Getted sink topics")
+	sinkTopics, err := getTopics(rootCtx, sinkAdminClient)
 	if err != nil {
-		panic(fmt.Errorf("failed to list sink topics: %w", err))
+		slog.Error("Failed to get sink topics", slog.Any("error", err))
+		return
 	}
 
-	// Determine topics to delete and check for missing topics
+	slog.Info("Checking source topics")
+	if err := checkTopics(sourceTopics); err != nil {
+		slog.Error("Failed to check source topics", slog.Any("error", err))
+		return
+	}
+
+	slog.Info("Deleting existing sink topics")
+	if err := deleteExistingTopics(rootCtx, sinkAdminClient, sinkTopics); err != nil {
+		slog.Error("Failed to delete existing sink topics", slog.Any("error", err))
+		return
+	}
+
+	slog.Info("Creating sink topics")
+	if err := createTopics(rootCtx, sinkAdminClient, sourceTopics); err != nil {
+		slog.Error("Failed to create sink topics", slog.Any("error", err))
+		return
+	}
+
+	slog.Info("Configuring consumer")
+	configureConsumer(sourceClient, sourceTopics)
+
+	slog.Info("Starting mirror")
+	for {
+		fetches := sourceClient.PollFetches(rootCtx)
+		fetches.EachError(func(s string, i int32, err error) {
+			slog.LogAttrs(
+				rootCtx,
+				slog.LevelError,
+				"error fetching topic",
+				slog.String("topic", s),
+				slog.Int("partition", int(i)),
+				slog.Any("error", err),
+			)
+		})
+
+		if fetches.Err() != nil {
+			return
+		}
+
+		slog.Info("Processing fetches")
+		fetches.EachRecord(func(r *kgo.Record) {
+			sinkClient.Produce(rootCtx, r, nil)
+		})
+	}
+}
+
+func wait(timeout time.Duration, fn func() bool) error {
+	start := time.Now()
+	for !fn() {
+		if time.Since(start) > timeout {
+			return fmt.Errorf("timeout waiting for condition")
+		}
+		time.Sleep(time.Second)
+	}
+	return nil
+}
+
+func getTopics(rootCtx context.Context, client *kadm.Client) (kadm.TopicDetails, error) {
+	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
+	defer cancel()
+
+	sourceTopics, err := client.ListTopics(ctx, config.TopicNames...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list source topics: %w", err)
+	}
+
+	return sourceTopics, nil
+}
+
+func checkTopics(sourceTopics kadm.TopicDetails) error {
 	missingTopics := make([]string, 0)
-	topicsToDelete := make([]string, 0)
 
-	for topic := range cfg.Topics {
+	for topic := range config.Topics {
 		if !sourceTopics.Has(topic) {
 			missingTopics = append(missingTopics, topic)
 		}
+	}
+
+	if len(missingTopics) > 0 {
+		return fmt.Errorf("source topics missing: %v", missingTopics)
+	}
+	return nil
+}
+
+func deleteExistingTopics(rootCtx context.Context, client *kadm.Client, sinkTopics kadm.TopicDetails) error {
+	topicsToDelete := make([]string, 0)
+
+	for topic := range config.Topics {
 		if sinkTopics.Has(topic) {
 			topicsToDelete = append(topicsToDelete, topic)
 		}
 	}
 
-	// Ensure all source topics exist
-	if len(missingTopics) > 0 {
-		panic(fmt.Errorf("source topics missing: %v", missingTopics))
+	if len(topicsToDelete) == 0 {
+		return nil
 	}
 
-	// delete topics from sink
-	if len(topicsToDelete) > 0 {
-		if _, err := sinkAdminClient.DeleteTopics(ctx, topicsToDelete...); err != nil {
-			panic(fmt.Errorf("failed to delete topic %v: %w", topicsToDelete, err))
-		}
-		fmt.Println("Deleted topics:", topicsToDelete)
+	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
+	defer cancel()
+
+	if _, err := client.DeleteTopics(ctx, topicsToDelete...); err != nil {
+		return fmt.Errorf("failed to delete topic %v: %w", topicsToDelete, err)
 	}
 
-	// create topics in sink
-	for _, topic := range topicNames {
-		dt := sourceTopics[topic]
-		if _, err := sinkAdminClient.CreateTopic(
-			ctx,
-			int32(len(dt.Partitions)),
-			1,
-			nil,
-			topic,
-		); err != nil {
-			panic(fmt.Errorf("failed to create topic %q: %w", topic, err))
+	if err := wait(config.Timeout, func() bool {
+		ctx, cancel = context.WithTimeout(rootCtx, config.Timeout)
+		defer cancel()
+
+		sinkTopics, err := client.ListTopics(ctx, topicsToDelete...)
+		if err != nil {
+			slog.Error("Failed to list sink topics to check if they are deleted", slog.Any("error", err))
+			return false
 		}
 
-		fmt.Println("Created topic:", topic)
+		for _, topic := range topicsToDelete {
+			if sinkTopics.Has(topic) {
+				return false
+			}
+		}
+
+		return true
+	}); err != nil {
+		return fmt.Errorf("wait for topics deletion: %w", err)
 	}
 
-	// Start consuming and producing to same partition topic
+	return nil
+}
+
+func createTopics(rootCtx context.Context, client *kadm.Client, sourceTopics kadm.TopicDetails) error {
+	for _, topic := range config.TopicNames {
+		if err := createTopic(rootCtx, client, sourceTopics[topic], topic); err != nil {
+			return fmt.Errorf("createTopic %q: %w", topic, err)
+		}
+	}
+
+	if err := wait(config.Timeout, func() bool {
+		ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
+		defer cancel()
+
+		sinkTopics, err := client.ListTopics(ctx, config.TopicNames...)
+		if err != nil {
+			slog.Error("Failed to list sink topics to check if they are created", slog.Any("error", err))
+			return false
+		}
+
+		for _, topic := range config.TopicNames {
+			if !sinkTopics.Has(topic) {
+				return false
+			}
+		}
+
+		return true
+	}); err != nil {
+		return fmt.Errorf("wait for topics creation: %w", err)
+	}
+
+	return nil
+}
+
+func createTopic(rootCtx context.Context, client *kadm.Client, dt kadm.TopicDetail, topic string) error {
+	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
+	defer cancel()
+
+	partitions := int32(len(dt.Partitions))
+
+	if _, err := client.CreateTopic(ctx, partitions, -1, nil, topic); err != nil {
+		return fmt.Errorf("failed to create topic %q: %w", topic, err)
+	}
+	return nil
+}
+
+func configureConsumer(client *kgo.Client, sourceTopics kadm.TopicDetails) {
 	partitions := map[string]map[int32]kgo.Offset{}
 	for topic, dt := range sourceTopics {
-		if _, exists := partitions[topic]; !exists {
-			partitions[topic] = map[int32]kgo.Offset{}
-		}
-
-		offset := kgo.NewOffset().AtEnd()
-		if cfg.Topics[topic].FromStart {
-			offset = kgo.NewOffset().AtStart()
-		}
+		cfg := config.Topics[topic]
+		offsetCfg := map[int32]kgo.Offset{}
 
 		for _, partition := range dt.Partitions {
-			partitions[topic][partition.Partition] = offset
+			if offset, ok := cfg.OffsetOf(partition.Partition); ok {
+				offsetCfg[partition.Partition] = kgo.NewOffset().At(offset)
+			}
 		}
+
+		partitions[topic] = offsetCfg
 	}
 
-	sourceClient.AddConsumePartitions(partitions)
+	client.AddConsumePartitions(partitions)
+}
 
-	// Fetch time :)
-	for {
-		fetches := sourceClient.PollFetches(ctx)
-		fetches.EachError(func(s string, i int32, err error) {
-			fmt.Printf("error fetching %s:%d: %v\n", s, i, err)
-		})
-		fetches.EachRecord(func(r *kgo.Record) {
-			sinkClient.Produce(ctx, r, nil)
-			fmt.Printf("produced record to %s:%d@%d\n", r.Topic, r.Partition, r.Offset)
-		})
+func getClients(opts []kgo.Opt) (*kgo.Client, *kadm.Client, error) {
+	client, err := kgo.NewClient(opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create source admin client: %w", err)
 	}
+
+	return client, kadm.NewClient(client), nil
 }

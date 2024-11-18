@@ -15,6 +15,6 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /app/main .
 
 FROM --platform=$BUILDPLATFORM gcr.io/distroless/static-debian12 AS runner
 
-COPY --from=builder /app/main /app/main
+COPY --from=builder /app/main /kmir
 
-ENTRYPOINT ["/app/main"]
+ENTRYPOINT ["/kmir"]

@@ -3,11 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"flag"
 	"fmt"
+	"strconv"
 	"strings"
-	"time"
 
+	"github.com/jessevdk/go-flags"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl"
@@ -15,156 +15,77 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
 
-type (
-	TopicConfig struct {
-		FromStart bool
-	}
+var config Config
 
-	Config struct {
-		Sink         []kgo.Opt
-		Source       []kgo.Opt
-		ClientID     string
-		KafkaVersion *kversion.Versions
-		Topics       map[string]TopicConfig
-	}
-)
-
-var (
-	sourceBrokers       = flag.String("source-brokers", "", "Comma-separated list of source Kafka brokers")
-	sourceTLSEnabled    = flag.Bool("source-tls-enabled", false, "Enable TLS for source Kafka")
-	sourceTLSCert       = flag.String("source-tls-cert", "", "TLS certificate for source Kafka")
-	sourceTLSInsecure   = flag.Bool("source-tls-insecure", false, "Skip TLS verification for source Kafka")
-	sourceSASLEnabled   = flag.Bool("source-sasl-enabled", false, "Enable SASL for source Kafka")
-	sourceSASLUsername  = flag.String("source-sasl-username", "", "SASL username for source Kafka")
-	sourceSASLPassword  = flag.String("source-sasl-password", "", "SASL password for source Kafka")
-	sourceSASLMechanism = flag.String("source-sasl-mechanism", "", "SASL mechanism for source Kafka")
-	sourceTimeout       = flag.Duration("source-timeout", 30*time.Second, "Timeout for source Kafka")
-
-	sinkBrokers       = flag.String("sink-brokers", "", "Comma-separated list of sink Kafka brokers")
-	sinkTLSEnabled    = flag.Bool("sink-tls-enabled", false, "Enable TLS for sink Kafka")
-	sinkTLSCert       = flag.String("sink-tls-cert", "", "TLS certificate for sink Kafka")
-	sinkTLSInsecure   = flag.Bool("sink-tls-insecure", false, "Skip TLS verification for sink Kafka")
-	sinkSASLEnabled   = flag.Bool("sink-sasl-enabled", false, "Enable SASL for sink Kafka")
-	sinkSASLUsername  = flag.String("sink-sasl-username", "", "SASL username for sink Kafka")
-	sinkSASLPassword  = flag.String("sink-sasl-password", "", "SASL password for sink Kafka")
-	sinkSASLMechanism = flag.String("sink-sasl-mechanism", "", "SASL mechanism for sink Kafka")
-	sinkTimeout       = flag.Duration("sink-timeout", 30*time.Second, "Timeout for sink Kafka")
-
-	clientID     = flag.String("client-id", "", "Client ID")
-	kafkaVersion = flag.String("kafka-version", "", "Kafka version")
-)
-
-func parseFlags() (*Config, error) {
-	flag.Parse()
-
-	if kafkaVersion == nil {
-		return nil, fmt.Errorf("kafka version is required")
-	}
-
-	kVersion := kversion.FromString(*kafkaVersion)
-	if kVersion == nil {
-		return nil, fmt.Errorf("unknown kafka version %q", *kafkaVersion)
-	}
-
-	sourceOpts, err := toFranzOptions(
-		sourceBrokers,
-		sourceTLSEnabled,
-		sourceTLSCert,
-		sourceTLSInsecure,
-		sourceSASLEnabled,
-		sourceSASLUsername,
-		sourceSASLPassword,
-		sourceSASLMechanism,
-		sourceTimeout,
-	)
+func initializeConfig() error {
+	var opts Options
+	parser := flags.NewParser(&opts, flags.Default)
+	parser.NamespaceDelimiter = "-"
+	topics, err := parser.Parse()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse source options: %w", err)
+		if !flags.WroteHelp(err) {
+			return fmt.Errorf("failed to parse flags: %w", err)
+		}
 	}
 
-	sinkOpts, err := toFranzOptions(
-		sinkBrokers,
-		sinkTLSEnabled,
-		sinkTLSCert,
-		sinkTLSInsecure,
-		sinkSASLEnabled,
-		sinkSASLUsername,
-		sinkSASLPassword,
-		sinkSASLMechanism,
-		sinkTimeout,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse sink options: %w", err)
-	}
-
-	topics := flag.Args()
 	if len(topics) == 0 {
-		return nil, fmt.Errorf("topics is empty")
+		return fmt.Errorf("no topics specified")
 	}
 
-	specifiedTopics := make(map[string]TopicConfig)
+	topicNames := make([]string, 0, len(topics))
+	topicOptions := make(map[string]TopicOption, len(topics))
 	for _, topic := range topics {
-		topicOffset := strings.Split(topic, ":")
-		if len(topicOffset) != 2 {
-			return nil, fmt.Errorf("invalid topic %q", topic)
+		name, opt, err := toTopic(topic)
+		if err != nil {
+			return fmt.Errorf("failed to parse topic %q: %w", topic, err)
 		}
 
-		var fromStart bool
-		switch topicOffset[1] {
-		case "from-start", "start", "from-beginning", "beginning":
-			fromStart = true
-		case "from-end", "end", "from-latest", "latest":
-			fromStart = false
-		default:
-			return nil, fmt.Errorf("invalid offset %q", topicOffset[1])
-		}
-
-		specifiedTopics[topicOffset[0]] = TopicConfig{
-			FromStart: fromStart,
-		}
+		topicNames = append(topicNames, name)
+		topicOptions[name] = opt
 	}
 
-	clientIDstr := ""
-	if clientID != nil {
-		clientIDstr = *clientID
+	kVersion := kversion.FromString(opts.KafkaVersion)
+	if kVersion == nil {
+		return fmt.Errorf("unknown kafka version %q", opts.KafkaVersion)
 	}
 
-	return &Config{
-		Sink:         sinkOpts,
-		Source:       sourceOpts,
-		ClientID:     clientIDstr,
-		KafkaVersion: kVersion,
-		Topics:       specifiedTopics,
-	}, nil
+	sourceOpts, err := toFranzOptions(opts.Source)
+	if err != nil {
+		return fmt.Errorf("failed to parse source options: %w", err)
+	}
+
+	sinkOpts, err := toFranzOptions(opts.Sink)
+	if err != nil {
+		return fmt.Errorf("failed to parse sink options: %w", err)
+	}
+
+	config.Sink = sinkOpts
+	config.Source = sourceOpts
+	config.ClientID = opts.ClientID
+	config.KafkaVersion = kVersion
+	config.Topics = topicOptions
+	config.TopicNames = topicNames
+	config.Timeout = max(opts.Sink.Timeout, opts.Source.Timeout)
+
+	return nil
 }
 
-func toFranzOptions(
-	brokers *string,
-	tLSEnabled *bool,
-	tLSCert *string,
-	tLSInsecure *bool,
-	sASLEnabled *bool,
-	sASLUsername *string,
-	sASLPassword *string,
-	sASLMechanism *string,
-	timeout *time.Duration,
-) ([]kgo.Opt, error) {
-	out := make([]kgo.Opt, 0)
+func toFranzOptions(brokerOpts BrokerOptions) ([]kgo.Opt, error) {
+	out := make([]kgo.Opt, 0, 4)
 
-	if brokers == nil || *brokers == "" {
-		return nil, fmt.Errorf("brokers is empty")
-	}
-	out = append(out, kgo.SeedBrokers(strings.Split(*brokers, ",")...))
+	out = append(out, kgo.SeedBrokers(brokerOpts.Brokers...))
+	out = append(out, kgo.DialTimeout(brokerOpts.Timeout))
 
-	if tLSEnabled != nil && *tLSEnabled {
+	if brokerOpts.Tls.Enabled {
 		tlsConfig := &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			Renegotiation:      tls.RenegotiateFreelyAsClient,
 			RootCAs:            x509.NewCertPool(),
-			InsecureSkipVerify: tLSInsecure != nil && *tLSInsecure,
+			InsecureSkipVerify: brokerOpts.Tls.Insecure,
 		}
 
-		if tLSCert != nil && *tLSCert != "" {
-			if ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*tLSCert)); !ok {
+		if brokerOpts.Tls.Cert != "" {
+			if ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(brokerOpts.Tls.Cert)); !ok {
 				return nil, fmt.Errorf("failed to append cert to root CAs")
 			}
 		}
@@ -172,37 +93,85 @@ func toFranzOptions(
 		out = append(out, kgo.DialTLSConfig(tlsConfig))
 	}
 
-	if sASLEnabled != nil && *sASLEnabled {
-		var mechanism sasl.Mechanism
-		if sASLMechanism == nil || sASLUsername == nil || sASLPassword == nil {
+	if brokerOpts.Sasl.Enabled {
+		if brokerOpts.Sasl.Mechanism == "" || brokerOpts.Sasl.Username == "" || brokerOpts.Sasl.Password == "" {
 			return nil, fmt.Errorf("SASL mechanism, username, and password are required")
 		}
 
-		switch *sASLMechanism {
+		var mechanism sasl.Mechanism
+		switch brokerOpts.Sasl.Mechanism {
 		case "plain":
 			mechanism = plain.Auth{
-				User: *sASLUsername,
-				Pass: *sASLPassword,
+				User: brokerOpts.Sasl.Username,
+				Pass: brokerOpts.Sasl.Password,
 			}.AsMechanism()
 		case "scram-sha-256":
 			mechanism = scram.Auth{
-				User: *sASLUsername,
-				Pass: *sASLPassword,
+				User: brokerOpts.Sasl.Username,
+				Pass: brokerOpts.Sasl.Password,
 			}.AsSha256Mechanism()
 		case "scram-sha-512":
 			mechanism = scram.Auth{
-				User: *sASLUsername,
-				Pass: *sASLPassword,
+				User: brokerOpts.Sasl.Username,
+				Pass: brokerOpts.Sasl.Password,
 			}.AsSha512Mechanism()
 		default:
-			return nil, fmt.Errorf("unknown SASL mechanism %q", *sASLMechanism)
+			return nil, fmt.Errorf("unknown SASL mechanism %q", brokerOpts.Sasl.Mechanism)
 		}
 
 		out = append(out, kgo.SASL(mechanism))
 	}
 
-	if timeout != nil {
-		out = append(out, kgo.DialTimeout(*timeout))
+	return out, nil
+}
+
+func toTopic(value string) (name string, opt TopicOption, err error) {
+	parts := strings.Split(value, "@")
+	name = parts[0]
+
+	switch len(parts) {
+	case 1:
+		opt = TopicOption{Offset: -1}
+	case 2:
+		opt, err = parseTopicOffset(parts[1])
+	default:
+		err = fmt.Errorf("expected topic@offset or topic@partition:offset,partition:offset... got %q", value)
+	}
+
+	return
+}
+
+func parseTopicOffset(value string) (TopicOption, error) {
+	offsetsOrOffsetPerPartition := strings.Split(value, ",")
+	if len(offsetsOrOffsetPerPartition) == 1 {
+		offset, err := strconv.ParseInt(offsetsOrOffsetPerPartition[0], 10, 64)
+		if err != nil {
+			return TopicOption{}, fmt.Errorf("failed to parse offset %q: %w", offsetsOrOffsetPerPartition[0], err)
+		}
+
+		return TopicOption{Offset: offset}, nil
+	}
+
+	out := TopicOption{
+		PerPartitionOffset: map[int32]int64{},
+	}
+	for _, offsets := range offsetsOrOffsetPerPartition {
+		partitionOffset := strings.Split(offsets, ":")
+		if len(partitionOffset) != 2 {
+			return out, fmt.Errorf("expected partition:offset, got %q", offsets)
+		}
+
+		partition, err := strconv.ParseInt(partitionOffset[0], 10, 32)
+		if err != nil {
+			return out, fmt.Errorf("failed to parse partition %q: %w", partitionOffset[0], err)
+		}
+
+		offset, err := strconv.ParseInt(partitionOffset[1], 10, 64)
+		if err != nil {
+			return out, fmt.Errorf("failed to parse offset %q: %w", partitionOffset[1], err)
+		}
+
+		out.PerPartitionOffset[int32(partition)] = offset
 	}
 
 	return out, nil
