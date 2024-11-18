@@ -6,6 +6,7 @@ on:
 
 env:
   SUPPORTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
+  DOCKER_REPO: mortezaprk/kmir
 
 jobs:
   build-and-publish:
@@ -33,7 +34,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: mortezaprk/kmir:latest,mortezaprk/kmir:${{ github.event.release.tag_name }},mortezaprk/kmir:latest
+          tags: ${{ env.DOCKER_REPO }}:latest,${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }}
           platforms: ${{ env.SUPPORTED_PLATFORMS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -42,7 +43,7 @@ jobs:
         run: |
           mkdir -p built
           for platform in ${SUPPORTED_PLATFORMS//,/ }; do
-            id=$(docker container create --platform=$platform mortezaprk/kmir:${{ github.event.release.tag_name }})
+            id=$(docker container create --platform=$platform ${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }})
             docker cp $id:/kmir built/kmir-${platform//\//-}
             docker rm -v $id
           done
@@ -51,3 +52,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: built/*
+      
+      - name: Update repo description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ env.DOCKER_REPO }}
