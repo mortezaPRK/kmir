@@ -1,13 +1,17 @@
 name: Publish Docker
 
 on:
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
+
+env:
+  SUPPORTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,5 +33,22 @@ jobs:
         with:
           context: .
           push: true
-          tags: mortezaprk/kmir:latest,mortezaprk/kmir:${{ github.sha }}
-          platforms: linux/amd64,linux/arm64
+          load: true
+          tags: mortezaprk/kmir:latest,mortezaprk/kmir:${{ github.event.release.tag_name }},mortezaprk/kmir:latest
+          platforms: ${{ env.SUPPORTED_PLATFORMS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Prepare Release
+        run: |
+          mkdir -p built
+          for platform in ${SUPPORTED_PLATFORMS//,/ }; do
+            id=$(docker container create --platform=$platform mortezaprk/kmir:${{ github.event.release.tag_name }})
+            docker cp $id:/kmir built/kmir-$platform
+            docker rm -v $id
+          done
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: built/*
