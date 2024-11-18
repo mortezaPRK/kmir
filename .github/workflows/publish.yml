@@ -43,7 +43,7 @@ jobs:
           mkdir -p built
           for platform in ${SUPPORTED_PLATFORMS//,/ }; do
             id=$(docker container create --platform=$platform mortezaprk/kmir:${{ github.event.release.tag_name }})
-            docker cp $id:/kmir built/kmir-$platform
+            docker cp $id:/kmir built/kmir-${platform//\//-}
             docker rm -v $id
           done
 
