@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/go-franz/pkg/kadm"
+	"github.com/twmb/go-franz/pkg/kgo"
 )
 
 func main() {
