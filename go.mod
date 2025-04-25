@@ -5,7 +5,7 @@ go 1.23.3
 require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/twmb/go-franz v1.18.0
-	github.com/twmb/go-franz/pkg/kadm v1.14.0
+	github.com/twmb/franz-go/pkg/kmd v1.14.0
 )
 
 require (
