@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/twmb/go-franz/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kmd"
 	"github.com/twmb/go-franz/pkg/kgo"
 )
 
@@ -105,7 +105,7 @@ func wait(timeout time.Duration, fn func() bool) error {
 	return nil
 }
 
-func getTopics(rootCtx context.Context, client *kadm.Client) (kadm.TopicDetails, error) {
+func getTopics(rootCtx context.Context, client *kmd.Client) (kmd.TopicDetails, error) {
 	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
 	defer cancel()
 
@@ -117,7 +117,7 @@ func getTopics(rootCtx context.Context, client *kadm.Client) (kadm.TopicDetails,
 	return sourceTopics, nil
 }
 
-func checkTopics(sourceTopics kadm.TopicDetails) error {
+func checkTopics(sourceTopics kmd.TopicDetails) error {
 	missingTopics := make([]string, 0)
 
 	for topic := range config.Topics {
@@ -132,7 +132,7 @@ func checkTopics(sourceTopics kadm.TopicDetails) error {
 	return nil
 }
 
-func deleteExistingTopics(rootCtx context.Context, client *kadm.Client, sinkTopics kadm.TopicDetails) error {
+func deleteExistingTopics(rootCtx context.Context, client *kmd.Client, sinkTopics kmd.TopicDetails) error {
 	topicsToDelete := make([]string, 0)
 
 	for topic := range config.Topics {
@@ -176,7 +176,7 @@ func deleteExistingTopics(rootCtx context.Context, client *kadm.Client, sinkTopi
 	return nil
 }
 
-func createTopics(rootCtx context.Context, client *kadm.Client, sourceTopics kadm.TopicDetails) error {
+func createTopics(rootCtx context.Context, client *kmd.Client, sourceTopics kmd.TopicDetails) error {
 	for _, topic := range config.TopicNames {
 		if err := createTopic(rootCtx, client, sourceTopics[topic], topic); err != nil {
 			return fmt.Errorf("createTopic %q: %w", topic, err)
@@ -207,7 +207,7 @@ func createTopics(rootCtx context.Context, client *kadm.Client, sourceTopics kad
 	return nil
 }
 
-func createTopic(rootCtx context.Context, client *kadm.Client, dt kadm.TopicDetail, topic string) error {
+func createTopic(rootCtx context.Context, client *kmd.Client, dt kmd.TopicDetail, topic string) error {
 	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
 	defer cancel()
 
@@ -219,7 +219,7 @@ func createTopic(rootCtx context.Context, client *kadm.Client, dt kadm.TopicDeta
 	return nil
 }
 
-func configureConsumer(client *kgo.Client, sourceTopics kadm.TopicDetails) {
+func configureConsumer(client *kgo.Client, sourceTopics kmd.TopicDetails) {
 	partitions := map[string]map[int32]kgo.Offset{}
 	for topic, dt := range sourceTopics {
 		cfg := config.Topics[topic]
@@ -237,11 +237,11 @@ func configureConsumer(client *kgo.Client, sourceTopics kadm.TopicDetails) {
 	client.AddConsumePartitions(partitions)
 }
 
-func getClients(opts []kgo.Opt) (*kgo.Client, *kadm.Client, error) {
+func getClients(opts []kgo.Opt) (*kgo.Client, *kmd.Client, error) {
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create source admin client: %w", err)
 	}
 
-	return client, kadm.NewClient(client), nil
+	return client, kmd.NewClient(client), nil
 }
