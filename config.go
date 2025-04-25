@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/jessevdk/go-flags"
-	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/kversion"
-	"github.com/twmb/franz-go/pkg/sasl"
-	"github.com/twmb/franz-go/pkg/sasl/plain"
-	"github.com/twmb/franz-go/pkg/sasl/scram"
+	"github.com/twmb/go-franz/pkg/kgo"
+	"github.com/twmb/go-franz/pkg/kversion"
+	"github.com/twmb/go-franz/pkg/sasl"
+	"github.com/twmb/go-franz/pkg/sasl/plain"
+	"github.com/twmb/go-franz/pkg/sasl/scram"
 )
 
 var config Config
