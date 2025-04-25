@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/kversion"
+	"github.com/twmb/go-franz/pkg/kgo"
+	"github.com/twmb/go-franz/pkg/kversion"
 )
 
 // Sasl defines the SASL configuration for a broker.
