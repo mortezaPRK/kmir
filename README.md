@@ -68,3 +68,64 @@ The positional arguments, which specify the topic information, can be in any of 
 ```sh
 kmir --source-brokers=localhost:9092 --sink-brokers=localhost:9093 --client-id=my-client --kafka-version=2.7.0 topic1 topic2@-1 topic3@0:100,1:200
 ```
+
+## Development
+
+### Prerequisites
+
+- Go 1.24 or later
+- golangci-lint v2.11.4 or later
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/mortezaPRK/kmir.git
+cd kmir
+
+# Install dependencies
+make deps
+```
+
+### Building
+
+```bash
+# Build the binary
+make build
+```
+
+### Testing
+
+```bash
+# Run all tests
+make test
+
+# Run short tests only
+make test-short
+
+# Generate coverage report
+make coverage
+
+# Run all CI checks
+make ci
+```
+
+### Available Make Commands
+
+| Command | Description |
+|---------|-------------|
+| `make build` | Build the binary |
+| `make test` | Run tests with race detection |
+| `make test-short` | Run short tests only |
+| `make lint` | Run linters (golangci-lint) |
+| `make fix` | Auto-fix formatting issues |
+| `make coverage` | Generate coverage report |
+| `make clean` | Clean build artifacts |
+| `make ci` | Run full CI checks (lint, vulncheck, test) |
+| `make deps` | Download dependencies |
+| `make deps-update` | Update dependencies |
+| `make vulncheck` | Check for security vulnerabilities |
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
