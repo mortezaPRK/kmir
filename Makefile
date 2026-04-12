@@ -26,11 +26,11 @@ test-short: ## Run short tests only
 
 lint: ## Run linters
 	@echo "Running linters..."
-	$(LINTER) run --timeout 5m ./...; \
+	$(LINTER) run --timeout 5m ./...
 
 fix: ## Auto-fix linting issues
 	@echo "Fixing linting issues..."
-	$(LINTER) run --fix --timeout 5m ./...; \
+	$(LINTER) run --fix --timeout 5m ./...
 
 coverage: ## Generate coverage report
 	@echo "Generating coverage report..."

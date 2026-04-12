@@ -248,7 +248,7 @@ func BenchmarkParseTopicOffset(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				parseTopicOffset(tt)
+				_, _ = parseTopicOffset(tt)
 			}
 		})
 	}
@@ -264,7 +264,7 @@ func BenchmarkToTopic(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				toTopic(tt)
+				_, _, _ = toTopic(tt)
 			}
 		})
 	}

@@ -99,6 +99,6 @@ func BenchmarkWait(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		wait(time.Second, fn)
+		_ = wait(time.Second, fn)
 	}
 }

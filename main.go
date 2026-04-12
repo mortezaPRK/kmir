@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -211,7 +212,11 @@ func createTopic(rootCtx context.Context, client *kadm.Client, dt kadm.TopicDeta
 	ctx, cancel := context.WithTimeout(rootCtx, config.Timeout)
 	defer cancel()
 
-	partitions := int32(len(dt.Partitions))
+	numPartitions := len(dt.Partitions)
+	if numPartitions > int(math.MaxInt32) {
+		return fmt.Errorf("number of partitions %d exceeds maximum int32 value", numPartitions)
+	}
+	partitions := int32(numPartitions) // #nosec G115
 
 	if _, err := client.CreateTopic(ctx, partitions, -1, nil, topic); err != nil {
 		return fmt.Errorf("failed to create topic %q: %w", topic, err)

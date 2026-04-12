@@ -1,3 +1,4 @@
+// Package main provides functionality for mirroring Kafka topics.
 package main
 
 import (
@@ -76,16 +77,16 @@ func toFranzOptions(brokerOpts BrokerOptions) ([]kgo.Opt, error) {
 	out = append(out, kgo.SeedBrokers(brokerOpts.Brokers...))
 	out = append(out, kgo.DialTimeout(brokerOpts.Timeout))
 
-	if brokerOpts.Tls.Enabled {
+	if brokerOpts.TLS.Enabled {
 		tlsConfig := &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			Renegotiation:      tls.RenegotiateFreelyAsClient,
 			RootCAs:            x509.NewCertPool(),
-			InsecureSkipVerify: brokerOpts.Tls.Insecure,
+			InsecureSkipVerify: brokerOpts.TLS.Insecure, // #nosec G402
 		}
 
-		if brokerOpts.Tls.Cert != "" {
-			if ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(brokerOpts.Tls.Cert)); !ok {
+		if brokerOpts.TLS.Cert != "" {
+			if ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(brokerOpts.TLS.Cert)); !ok {
 				return nil, fmt.Errorf("failed to append cert to root CAs")
 			}
 		}
