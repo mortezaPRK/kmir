@@ -2,6 +2,8 @@ module github.com/mortezaPRK/kmir
 
 go 1.24.0
 
+tool golang.org/x/vuln/cmd/govulncheck
+
 require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/twmb/franz-go v1.20.7
@@ -20,5 +22,3 @@ require (
 	golang.org/x/tools v0.29.0 // indirect
 	golang.org/x/vuln v1.1.4 // indirect
 )
-
-tool golang.org/x/vuln/cmd/govulncheck
