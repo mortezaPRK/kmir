@@ -15,8 +15,8 @@ type Sasl struct {
 	Mechanism string `long:"mechanism" env:"MECHANISM" description:"SASL mechanism"`
 }
 
-// Tls defines the TLS configuration for a broker.
-type Tls struct {
+// TLS defines the TLS configuration for a broker.
+type TLS struct {
 	Enabled  bool   `long:"enabled" env:"ENABLED" description:"Enable TLS"`
 	Cert     string `long:"cert" env:"CERT" description:"TLS certificate"`
 	Insecure bool   `long:"insecure" env:"INSECURE" description:"Skip TLS verification"`
@@ -25,7 +25,7 @@ type Tls struct {
 // BrokerOptions defines the configuration for a Kafka broker.
 type BrokerOptions struct {
 	Brokers []string      `long:"brokers" env:"BROKERS" env-delim:"," description:"Comma-separated list of Kafka brokers" required:"true"`
-	Tls     Tls           `group:"TLS" namespace:"tls" env-namespace:"TLS"`
+	TLS     TLS           `group:"TLS" namespace:"tls" env-namespace:"TLS"`
 	Sasl    Sasl          `group:"SASL" namespace:"sasl" env-namespace:"SASL"`
 	Timeout time.Duration `long:"timeout" env:"TIMEOUT" description:"Timeout for Kafka" default:"10s"`
 }

@@ -73,7 +73,7 @@ kmir --source-brokers=localhost:9092 --sink-brokers=localhost:9093 --client-id=m
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - golangci-lint v2.11.4 or later
 
 ### Setup

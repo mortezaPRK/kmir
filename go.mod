@@ -1,6 +1,6 @@
 module github.com/mortezaPRK/kmir
 
-go 1.24.0
+go 1.26.0
 
 tool golang.org/x/vuln/cmd/govulncheck
 
