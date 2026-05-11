@@ -6,7 +6,7 @@ tool golang.org/x/vuln/cmd/govulncheck
 
 require (
 	github.com/jessevdk/go-flags v1.6.1
-	github.com/twmb/franz-go v1.21.0
+	github.com/twmb/franz-go v1.21.1
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 )
 
