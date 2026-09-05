@@ -80,7 +80,7 @@ kmir --source-brokers=localhost:9092 --sink-brokers=localhost:9093 --client-id=m
 
 ```bash
 # Clone the repository
-git clone https://github.com/mortezaPRK/kmir.git
+git clone https://mortz.dev/go/kmir.git
 cd kmir
 
 # Install dependencies

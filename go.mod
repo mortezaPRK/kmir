@@ -1,4 +1,4 @@
-module github.com/mortezaPRK/kmir
+module mortz.dev/go/kmir
 
 go 1.26.0
 
